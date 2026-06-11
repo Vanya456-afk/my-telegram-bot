@@ -15,13 +15,38 @@ def start(message):
     markup.add("Кнопка 1", "Кнопка 2", "Магазин", "Топ", "Ящики", "В бой")
     bot.send_message(message.chat.id, "Привет! Выбирай, что делать:", reply_markup=markup)
 
-# Логика ответов на кнопки
+# Логика ответов
 @bot.message_handler(func=lambda message: True)
 def handle_text(message):
-    if message.text == "Магазин":
+    if message.text == "Топ":
+        top_list = """
+🏆 Топ 10 Игроков
+━━━━━━━━━━━━━━
+#1 Легенда Бравла
+   0 кубков  0 монет  0 побед
+#2 Легенда Бравла
+   0 кубков  0 монет  0 побед
+#3 Легенда Бравла
+   0 кубков  0 монет  0 побед
+#4 Мастер
+   0 кубков  0 монет  0 побед
+#5 Боец
+   0 кубков  0 монет  0 побед
+#6 Новичок
+   0 кубков  0 монет  0 побед
+#7 Новичок
+   0 кубков  0 монет  0 побед
+#8 Новичок
+   0 кубков  0 монет  0 побед
+#9 Новичок
+   0 кубков  0 монет  0 побед
+#10 Новичок
+   0 кубков  0 монет  0 побед
+"""
+        bot.send_message(message.chat.id, top_list)
+        
+    elif message.text == "Магазин":
         bot.send_message(message.chat.id, "🛒 Добро пожаловать в магазин!")
-    elif message.text == "Топ":
-        bot.send_message(message.chat.id, "🏆 Таблица лидеров:\n1. Игрок — 1000 очков")
     elif message.text == "Ящики":
         bot.send_message(message.chat.id, "📦 Ты открыл ящик!")
     elif message.text == "В бой":
