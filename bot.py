@@ -8,6 +8,12 @@ TOKEN = os.environ.get('BOT_TOKEN')
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
+# ❗ ГЛАВНЫЙ АДМИН (Создатель): Замени эти цифры на свой настоящий Telegram ID
+CREATOR_ID = 123456789 
+
+# Список всех администраторов (изначально в нем только создатель)
+ADMINS = [CREATOR_ID]
+
 players = {}
 clans = {}
 
@@ -35,18 +41,12 @@ COSMETIC_POOL = {
     "sprays": ["🎨 Спрей ХАОС (+15 монет)", "⚡ Спрей МЛГ (+15 монет)", "👑 Спрей Корона (+15 монет)", "❌ Спрей КРЕСТ (+15 монет)"]
 }
 
-MODIFIERS = [
-    "🤖 Робот-Босс (+50 монет награды, повышенный риск слить!)", 
-    "🥤 Энергетический напиток (+15% к шансу победы!)", 
-    "☄️ Метеоритный дождь (Классический жесткий замес)"
-]
-
 def get_player(user_id, username="Игрок"):
     if user_id not in players:
         players[user_id] = {
             'name': username,
             'coins': 2000,
-            'gems': 600,  # Даем чуть больше гемов на старте для теста пака
+            'gems': 600,
             'cups': 0,
             'pass_xp': 0,
             'clan': None,
@@ -57,7 +57,8 @@ def get_player(user_id, username="Игрок"):
             'boxes': 0,
             'hypercharges': [],
             'mastery': {"Шелли": 0},
-            'skins': [],  # Список купленных скинов
+            'skins': [],
+            'friends': [],  # Список ID друзей игрока
             'cosmetics': {
                 'unlocked_icons': ["💀 Череп Brawl"],
                 'unlocked_pins': ["👍 Шелли Лайк"],
@@ -69,13 +70,14 @@ def get_player(user_id, username="Игрок"):
         }
     return players[user_id]
 
-user_states = {}
-
-def get_main_markup():
+def get_main_markup(user_id):
     markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     markup.add("⚔️ В бой!", "👤 Профиль")
     markup.add("🛍 Магазин", "✨ Starr Drops")
-    markup.add("🎫 Промокоды", "🎨 Настроить Косметику")
+    markup.add("👥 Друзья", "🎨 Настроить Косметику")
+    markup.add("🎫 Промокоды")
+    if user_id in ADMINS:
+        markup.add("👑 Админ-Панель")
     markup.add("Назад")
     return markup
 
@@ -84,15 +86,37 @@ def start(message):
     user_id = message.from_user.id
     name = message.from_user.first_name or f"User_{user_id}"
     get_player(user_id, name)
-    bot.send_message(message.chat.id, f"🔥 Добро пожаловать! Эксклюзивный пак «Олли Jake» уже доступен в Магазине!", reply_markup=get_main_markup())
+    bot.send_message(message.chat.id, f"🔥 Бот обновлен! Доступны системы друзей и выдачи админок!", reply_markup=get_main_markup(user_id))
 
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callbacks(call):
     user_id = call.from_user.id
     user = get_player(user_id)
     
-    # Покупка пака Олли Jake
-    if call.data == "buy_ollie_jake":
+    # Действия админки
+    if call.data == "admin_give_resources" and user_id in ADMINS:
+        user['coins'] += 50000
+        user['gems'] += 5000
+        bot.answer_callback_query(call.id, "💰 Успешно начислено 50,000 монет и 5,000 гемов!", show_alert=True)
+        
+    elif call.data == "admin_global_broadcast" and user_id in ADMINS:
+        bot.answer_callback_query(call.id)
+        msg = bot.send_message(call.message.chat.id, "📢 Введи текст для рассылки всем игрокам:")
+        bot.register_next_step_handler(msg, process_broadcast_text)
+
+    elif call.data == "admin_add_new_admin" and user_id in ADMINS:
+        bot.answer_callback_query(call.id)
+        msg = bot.send_message(call.message.chat.id, "👤 Введи Telegram ID игрока, которому хочешь дать АДМИНКУ:")
+        bot.register_next_step_handler(msg, process_add_admin)
+
+    # Взаимодействие с друзьями
+    elif call.data == "friend_add_action":
+        bot.answer_callback_query(call.id)
+        msg = bot.send_message(call.message.chat.id, "🆔 Введи ID игрока, которого хочешь добавить в друзья:")
+        bot.register_next_step_handler(msg, process_add_friend)
+
+    # Магазин
+    elif call.data == "buy_ollie_jake":
         if "Олли Jake" in user.get('skins', []):
             bot.answer_callback_query(call.id, "❌ У тебя уже есть этот эксклюзивный пак!", show_alert=True)
             return
@@ -101,18 +125,16 @@ def handle_callbacks(call):
             user['gems'] -= 555
             user.setdefault('skins', []).append("Олли Jake")
             
-            # Добавляем иконку и пин в инвентарь
             if "player_icon_rico_brawlentines.jpg" not in user['cosmetics']['unlocked_icons']:
                 user['cosmetics']['unlocked_icons'].append("player_icon_rico_brawlentines.jpg")
             if "emoji_bp_street_gg.png" not in user['cosmetics']['unlocked_pins']:
                 user['cosmetics']['unlocked_pins'].append("emoji_bp_street_gg.png")
                 
-            bot.answer_callback_query(call.id, "🎉 Успешно! Пак Олли Jake добавлен на аккаунт!", show_alert=True)
+            bot.answer_callback_query(call.id, "🎉 Пачка Олли Jake успешно куплена!", show_alert=True)
             bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.message_id)
         else:
             bot.answer_callback_query(call.id, "❌ Недостаточно гемов! Нужно 555 💎", show_alert=True)
 
-    # Экипировка косметики
     elif call.data.startswith("set_icon_"):
         icon = call.data.replace("set_icon_", "")
         user['cosmetics']['active_icon'] = icon
@@ -124,14 +146,7 @@ def handle_callbacks(call):
         user['cosmetics']['active_pin'] = pin
         bot.answer_callback_query(call.id, f"Пин экипирован!")
         bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.message_id)
-        
-    elif call.data.startswith("set_spray_"):
-        spray = call.data.replace("set_spray_", "")
-        user['cosmetics']['active_spray'] = spray
-        bot.answer_callback_query(call.id, f"Спрей выбран!")
-        bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.message_id)
 
-    # Логика выбора бойцов
     elif call.data.startswith("view_brawler_"):
         brawler = call.data.replace("view_brawler_", "")
         lvl = user['brawlers'].get(brawler, 1)
@@ -139,7 +154,7 @@ def handle_callbacks(call):
         has_hc = "🔥 АКТИВИРОВАН" if brawler in user.get('hypercharges', []) else "❌ НЕ КУПЛЕН"
         b_info = ALL_BRAWLERS.get(brawler, {"rarity": "🟢 Редкий", "bonus": "Нет"})
         
-        text = f"ℹ️ **БРАВЛЕР: {brawler}**\n━━━━━━━━━━━━━━━━━━━\n⭐ Редкость: {b_info['rarity']}\n🧪 Сила: **{lvl}/11**\n🔮 Мастерство: **{mastery} XP**\n⚡  Гиперзаряд: **{has_hc}**\n📋 Пассивка: *{b_info['bonus']}*\n"
+        text = f"ℹ️ **БРАВЛЕР: {brawler}**\n━━━━━━━━━━━━━━━━━━━\n⭐ Редкость: {b_info['rarity']}\n🧪 Сила: **{lvl}/11**\n🔮 Мастерство: **{mastery} XP**\n⚡ Гиперзаряд: **{has_hc}**\n📋 Пассивка: *{b_info['bonus']}*\n"
         inline_confirm = telebot.types.InlineKeyboardMarkup()
         inline_confirm.add(telebot.types.InlineKeyboardButton(text=f"🎯 Взять {brawler} в бой", callback_data=f"equip_brawler_{brawler}"))
         inline_confirm.add(telebot.types.InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_selection"))
@@ -160,7 +175,6 @@ def handle_callbacks(call):
         inline_choose.add(*buttons)
         bot.send_message(call.message.chat.id, "🦸‍♂️ **ВЫБОР БОЙЦА**:", reply_markup=inline_choose)
 
-    # Открытие Starr Drops
     elif call.data == "roll_starr_drop":
         roll = random.random()
         coins_add = 150
@@ -171,7 +185,6 @@ def handle_callbacks(call):
             drop_type = random.choice(["icons", "pins", "sprays"])
             cosmetic_drop = random.choice(COSMETIC_POOL[drop_type])
             
-            # Исключаем из обычного дропа эксклюзивы из платного пака
             if cosmetic_drop in ["player_icon_rico_brawlentines.jpg", "emoji_bp_street_gg.png"]:
                 cosmetic_drop = COSMETIC_POOL[drop_type][0]
 
@@ -179,8 +192,6 @@ def handle_callbacks(call):
                 user['cosmetics']['unlocked_icons'].append(cosmetic_drop)
             elif drop_type == "pins" and cosmetic_drop not in user['cosmetics']['unlocked_pins']:
                 user['cosmetics']['unlocked_pins'].append(cosmetic_drop)
-            elif drop_type == "sprays" and cosmetic_drop not in user['cosmetics']['unlocked_sprays']:
-                user['cosmetics']['unlocked_sprays'].append(cosmetic_drop)
 
         user['coins'] += coins_add
         report = f"✨ **СТАРР ДРОП ОТКРЫТ!** ✨\n━━━━━━━━━━━━━━━\n💰 Монеты: +{coins_add}"
@@ -190,14 +201,121 @@ def handle_callbacks(call):
         bot.send_message(call.message.chat.id, report)
         bot.answer_callback_query(call.id)
 
-# --- ОБРАБОТКА ТЕКСТА ---
+# Функция добавления админа
+def process_add_admin(message):
+    if message.text == "Назад":
+        bot.send_message(message.chat.id, "Отменено.", reply_markup=get_main_markup(message.from_user.id))
+        return
+    try:
+        new_admin_id = int(message.text)
+        if new_admin_id in ADMINS:
+            bot.send_message(message.chat.id, "❌ Этот игрок уже является админом!", reply_markup=get_main_markup(message.from_user.id))
+        else:
+            ADMINS.append(new_admin_id)
+            bot.send_message(message.chat.id, f"✅ Игрок с ID `{new_admin_id}` успешно назначен АДМИНИСТРАТОРОМ!", parse_mode="Markdown", reply_markup=get_main_markup(message.from_user.id))
+            try:
+                bot.send_message(new_admin_id, "👑 **Вам выдали права администратора бота!** Перезапустите бота кнопкой /start")
+            except:
+                pass
+    except ValueError:
+        bot.send_message(message.chat.id, "❌ Неверный формат ID. Вводи только цифры!", reply_markup=get_main_markup(message.from_user.id))
+
+# Функция добавления друга
+def process_add_friend(message):
+    user_id = message.from_user.id
+    user = get_player(user_id)
+    if message.text == "Назад":
+        bot.send_message(message.chat.id, "Отменено.", reply_markup=get_main_markup(user_id))
+        return
+    try:
+        friend_id = int(message.text)
+        if friend_id == user_id:
+            bot.send_message(message.chat.id, "❌ Нельзя добавить в друзья самого себя!", reply_markup=get_main_markup(user_id))
+            return
+        if friend_id in user.get('friends', []):
+            bot.send_message(message.chat.id, "❌ Этот игрок уже есть в твоем списке друзей!", reply_markup=get_main_markup(user_id))
+            return
+        
+        if friend_id in players:
+            user.setdefault('friends', []).append(friend_id)
+            # Взаимное добавление
+            friend_user = get_player(friend_id)
+            friend_user.setdefault('friends', []).append(user_id)
+            
+            bot.send_message(message.chat.id, f"🤝 Вы подружились с игроком **{friend_user['name']}**!", parse_mode="Markdown", reply_markup=get_main_markup(user_id))
+            try:
+                bot.send_message(friend_id, f"🤝 Игрок **{user['name']}** добавил вас в друзья!")
+            except:
+                pass
+        else:
+            bot.send_message(message.chat.id, "❌ Игрок с таким ID не найден в боте! (Он должен хотя бы раз запустить бота)", reply_markup=get_main_markup(user_id))
+    except ValueError:
+        bot.send_message(message.chat.id, "❌ Ошибка. ID состоит только из цифр!", reply_markup=get_main_markup(user_id))
+
+# Рассылка
+def process_broadcast_text(message):
+    if message.text == "Назад":
+        bot.send_message(message.chat.id, "Отменено.", reply_markup=get_main_markup(message.from_user.id))
+        return
+    count = 0
+    for u_id in players.keys():
+        try:
+            bot.send_message(u_id, f"📢 **ОБЪЯВЛЕНИЕ ОТ АДМИНИСТРАЦИИ:**\n\n{message.text}", parse_mode="Markdown")
+            count += 1
+        except:
+            pass
+    bot.send_message(message.chat.id, f"✅ Успешно отправлено {count} игрокам.", reply_markup=get_main_markup(message.from_user.id))
+
 @bot.message_handler(func=lambda message: True)
 def handle_text(message):
     user_id = message.from_user.id
     name = message.from_user.first_name or "Игрок"
     user = get_player(user_id, name)
 
-    if message.text == "🛍 Магазин":
+    if message.text.lower() == "only2026":
+        if "only2026" in user.get('used_promos', []):
+            bot.send_message(message.chat.id, "❌ Промокод уже использован!", reply_markup=get_main_markup(user_id))
+        else:
+            user['coins'] += 1; user['gems'] += 1; user['boxes'] = user.get('boxes', 0) + 1
+            user.setdefault('used_promos', []).append("only2026")
+            bot.send_message(message.chat.id, "🎉 **only2026 активирован!**", reply_markup=get_main_markup(user_id))
+        return
+
+    # Открытие меню админки
+    if message.text == "👑 Админ-Панель" and user_id in ADMINS:
+        inline_admin = telebot.types.InlineKeyboardMarkup(row_width=1)
+        inline_admin.add(
+            telebot.types.InlineKeyboardButton("💰 Начислить ресурсы (+50к голды, +5к гемов)", callback_data="admin_give_resources"),
+            telebot.types.InlineKeyboardButton("📢 Сделать глобальную рассылку", callback_data="admin_global_broadcast"),
+            telebot.types.InlineKeyboardButton("➕ Добавить админа по ID", callback_data="admin_add_new_admin")
+        )
+        bot.send_message(message.chat.id, f"👑 **ПАНЕЛЬ РАЗРАБОТЧИКА**\n\nТекущих админов: {len(ADMINS)}", reply_markup=inline_admin)
+
+    # Раздел друзей
+    elif message.text == "👥 Друзья":
+        inline_friends = telebot.types.InlineKeyboardMarkup()
+        inline_friends.add(telebot.types.InlineKeyboardButton("➕ Добавить друга по ID", callback_data="friend_add_action"))
+        
+        f_list = []
+        for f_id in user.get('friends', []):
+            if f_id in players:
+                f_user = players[f_id]
+                f_list.append(f"• 👤 {f_user['name']} | 🏆 {f_user['cups']} кубков (ID: `{f_id}`)")
+        
+        if not f_list:
+            f_list_str = "У тебя пока нет друзей. Поделись своим ID с кем-то!"
+        else:
+            f_list_str = "\n".join(f_list)
+
+        friends_text = (
+            f"👥 **ТВОИ ДРУЗЬЯ**\n"
+            f"━━━━━━━━━━━━━━━━━━━━━\n"
+            f"🆔 Твой ID для друзей: `{user_id}`\n\n"
+            f"📋 Список друзей:\n{f_list_str}"
+        )
+        bot.send_message(message.chat.id, friends_text, reply_markup=inline_friends, parse_mode="Markdown")
+
+    elif message.text == "🛍 Магазин":
         inline_shop = telebot.types.InlineKeyboardMarkup()
         inline_shop.add(telebot.types.InlineKeyboardButton("🟢 Купить Пак 'Олли Jake' (555 💎)", callback_data="buy_ollie_jake"))
         
@@ -223,30 +341,16 @@ def handle_text(message):
     elif message.text in ["🌵 Одиночное Столкновение", "⚽ Броулбол"]:
         cb = user['selected_brawler']
         lvl = user['brawlers'].get(cb, 1)
-        
         win_chance = 0.50 + (lvl - 1) * 0.04
-        has_hc = cb in user.get('hypercharges', [])
-        if has_hc: win_chance += 0.25
 
         if random.random() < win_chance:
-            cups_win = 20 if has_hc else 10
-            gold_win = 60 if has_hc else 30
-            
-            if user['cosmetics']['active_spray']:
-                gold_win += 15
-                spray_bonus = " (+15 монет от Спрея!)"
-            else: spray_bonus = ""
-
+            cups_win = 10; gold_win = 30
             user['cups'] += cups_win; user['coins'] += gold_win; user['wins'] += 1
-            user.setdefault('mastery', {})[cb] = user['mastery'].get(cb, 0) + 15
-            
-            res = f"🔥 **ПОБЕДА!**\nБоец: {cb}\nНаграды: +{cups_win} 🏆, +{gold_win} 💰{spray_bonus}"
+            res = f"🔥 **ПОБЕДА!** Награды: +{cups_win} 🏆, +{gold_win} 💰"
         else:
-            cups_lose = 2 if cb == "Леон" else 7
-            user['cups'] = max(0, user['cups'] - cups_lose)
-            res = f"❌ **ПОРАЖЕНИЕ!** Потеряно: -{cups_lose} 🏆."
-
-        bot.send_message(message.chat.id, res, reply_markup=get_main_markup())
+            user['cups'] = max(0, user['cups'] - 7)
+            res = f"❌ **ПОРАЖЕНИЕ!** Потеряно: -7 🏆."
+        bot.send_message(message.chat.id, res, reply_markup=get_main_markup(user_id))
 
     elif message.text == "🎨 Настроить Косметику":
         inline_choose = telebot.types.InlineKeyboardMarkup(row_width=1)
@@ -254,9 +358,6 @@ def handle_text(message):
             inline_choose.add(telebot.types.InlineKeyboardButton(f"🖼️ Поставить {ic}", callback_data=f"set_icon_{ic}"))
         for p in user['cosmetics']['unlocked_pins']:
             inline_choose.add(telebot.types.InlineKeyboardButton(f"💬 Экипировать {p}", callback_data=f"set_pin_{p}"))
-        for sp in user['cosmetics']['unlocked_sprays']:
-            inline_choose.add(telebot.types.InlineKeyboardButton(f"🖌️ Напылить {sp}", callback_data=f"set_spray_{sp}"))
-
         bot.send_message(message.chat.id, "🎨 **ГАРДЕРОБ КОСМЕТИКИ**:", reply_markup=inline_choose)
 
     elif message.text == "👤 Профиль":
@@ -269,8 +370,8 @@ def handle_text(message):
         if not s_list: s_list = ["• Нет скинов"]
         
         card = (
-            f"🖼️ Иконка профиля: `{c_icon}`\n"
             f"👑 **АККАУНТ: {user['name']}**\n"
+            f"🆔 Твой ID: `{user_id}`\n"
             f"━━━━━━━━━━━━━━━━━━━━━\n"
             f"💬 Экипированный Пин: `{c_pin}`\n"
             f"🖌️ Спрей: {c_spray}\n"
@@ -279,15 +380,27 @@ def handle_text(message):
             f"👕 Купленные скины:\n" + "\n".join(s_list) + "\n\n"
             f"🦸‍♂️ Твои бравлеры:\n" + "\n".join(b_list)
         )
-        bot.send_message(message.chat.id, card)
+
+        if c_icon.endswith(".jpg") or c_icon.endswith(".png"):
+            if os.path.exists(c_icon):
+                with open(c_icon, 'rb') as photo:
+                    bot.send_photo(message.chat.id, photo, caption=f"🖼️ **Твоя иконка профиля активна!**\n\n" + card, parse_mode="Markdown")
+            else:
+                bot.send_message(message.chat.id, f"🖼️ (Ошибка файла иконки: `{c_icon}`)\n\n" + card, parse_mode="Markdown")
+        else:
+            full_card = f"🖼️ Иконка: `{c_icon}`\n\n" + card
+            bot.send_message(message.chat.id, full_card, parse_mode="Markdown")
 
     elif message.text == "✨ Starr Drops":
         inline_starr = telebot.types.InlineKeyboardMarkup()
         inline_starr.add(telebot.types.InlineKeyboardButton("🟡 Открыть Starr Drop 🟡", callback_data="roll_starr_drop"))
         bot.send_message(message.chat.id, "✨ Симулятор Старр Дропсов!", reply_markup=inline_starr)
 
+    elif message.text == "🎫 Промокоды":
+        bot.send_message(message.chat.id, "🎫 Просто напиши рабочий промокод в чат для активации!")
+
     elif message.text == "Назад":
-        bot.send_message(message.chat.id, "В меню.", reply_markup=get_main_markup())
+        bot.send_message(message.chat.id, "В меню.", reply_markup=get_main_markup(user_id))
 
 @app.route('/')
 def home(): return "Server OK"
