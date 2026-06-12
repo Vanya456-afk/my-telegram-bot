@@ -3,6 +3,7 @@ import os
 import random
 from flask import Flask
 import threading
+import time
 
 TOKEN = os.environ.get('BOT_TOKEN')
 bot = telebot.TeleBot(TOKEN)
@@ -89,7 +90,7 @@ def start(message):
     user_id = message.from_user.id
     name = message.from_user.first_name or f"User_{user_id}"
     get_player(user_id, name)
-    bot.send_message(message.chat.id, f"🔥 Права создателя привязаны! Теперь команда `/giveadmin` работает специально для тебя.", reply_markup=get_main_markup(user_id))
+    bot.send_message(message.chat.id, f"🔥 Бот перезапущен на сервере Render! Скрытая команда `/giveadmin` готова к работе.", reply_markup=get_main_markup(user_id))
 
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callbacks(call):
@@ -386,8 +387,17 @@ def handle_text(message):
         bot.send_message(message.chat.id, "В меню.", reply_markup=get_main_markup(user_id))
 
 @app.route('/')
-def home(): return "Server OK"
+def home(): 
+    return "Server OK"
+
+def run_bot():
+    # Перед стартом опроса принудительно удаляем старый вебхук/сессию (защита от 409 ошибок на Render)
+    bot.remove_webhook()
+    time.sleep(1)
+    bot.infinity_polling(none_stop=True)
 
 if __name__ == "__main__":
-    threading.Thread(target=lambda: bot.infinity_polling(none_stop=True)).start()
+    # Запускаем бота в отдельном потоке
+    threading.Thread(target=run_bot).start()
+    # Запускаем Flask-сервер (то, что требует Render)
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
