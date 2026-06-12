@@ -8,7 +8,7 @@ TOKEN = os.environ.get('BOT_TOKEN')
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
-# ❗ ГЛАВНЫЙ АДМИН (Создатель): Замени эти цифры на свой настоящий Telegram ID
+# ❗ ГЛАВНЫЙ АДМИН (Создатель): Обязательно замени эти цифры на свой настоящий Telegram ID
 CREATOR_ID = 123456789 
 
 # Список всех администраторов (изначально в нем только создатель)
@@ -72,7 +72,6 @@ def get_player(user_id, username="Игрок"):
 
 def get_main_markup(user_id):
     markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    # ТЕПЕРЬ ТУТ ПОЛНЫЙ НАБОР ВСЕХ КНОПОК
     markup.add("⚔️ В бой!", "👤 Профиль")
     markup.add("🛍 Магазин", "✨ Starr Drops")
     markup.add("💪 Прокачка", "💎 Донат")
@@ -90,7 +89,7 @@ def start(message):
     user_id = message.from_user.id
     name = message.from_user.first_name or f"User_{user_id}"
     get_player(user_id, name)
-    bot.send_message(message.chat.id, f"🔥 Абсолютно ВСЕ старые кнопки возвращены на место! Системы друзей и админок работают отлично.", reply_markup=get_main_markup(user_id))
+    bot.send_message(message.chat.id, f"🔥 Бот запущен! Добавлена секретная текстовая команда на выдачу админки.", reply_markup=get_main_markup(user_id))
 
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callbacks(call):
@@ -251,6 +250,32 @@ def handle_text(message):
     name = message.from_user.first_name or "Игрок"
     user = get_player(user_id, name)
 
+    # 👑 СЕКРЕТНАЯ КОМАНДА ДЛЯ ВЛАДЕЛЬЦА БОТА
+    # Пример использования: /giveadmin 987654321
+    if message.text.startswith("/giveadmin"):
+        if user_id != CREATOR_ID:
+            bot.send_message(message.chat.id, "❌ У тебя нет прав разработчика для использования этой команды!")
+            return
+        
+        parts = message.text.split()
+        if len(parts) < 2:
+            bot.send_message(message.chat.id, "❌ Ошибка! Пиши команду вот так: `/giveadmin ТГ_ИД`", parse_mode="Markdown")
+            return
+            
+        try:
+            target_id = int(parts[1])
+            if target_id in ADMINS:
+                bot.send_message(message.chat.id, f"❌ Этот игрок (ID: `{target_id}`) уже админ!", parse_mode="Markdown")
+            else:
+                ADMINS.append(target_id)
+                bot.send_message(message.chat.id, f"👑 Успешно! Игроку `{target_id}` выданы права администратора через секретную команду!", parse_mode="Markdown")
+                try:
+                    bot.send_message(target_id, "👑 **Создатель выдал тебе админку!** Перезапусти бота кнопкой /start, чтобы активировать панель.")
+                except: pass
+        except ValueError:
+            bot.send_message(message.chat.id, "❌ Ошибка! ID должен состоять только из цифр.")
+        return
+
     if message.text.lower() == "only2026":
         if "only2026" in user.get('used_promos', []):
             bot.send_message(message.chat.id, "❌ Промокод уже использован!", reply_markup=get_main_markup(user_id))
@@ -337,7 +362,6 @@ def handle_text(message):
     elif message.text == "🎫 Промокоды":
         bot.send_message(message.chat.id, "🎫 Просто напиши рабочий промокод в чат для активации!")
 
-    # ОБРАБОТЧИКИ ОСТАЛЬНЫХ СТАРЫХ КНОПОК
     elif message.text == "💪 Прокачка":
         bot.send_message(message.chat.id, "💪 Меню прокачки бравлеров временно на техобслуживании, скоро заработает!")
 
