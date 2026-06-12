@@ -8,10 +8,10 @@ TOKEN = os.environ.get('BOT_TOKEN')
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
-# ❗ ГЛАВНЫЙ АДМИН (Создатель): Обязательно замени эти цифры на свой настоящий Telegram ID
-CREATOR_ID = 123456789 
+# ⭐ ТВОЙ НАСТОЯЩИЙ TELEGRAM ID АВТОМАТИЧЕСКИ ПОДКЛЮЧЕН СЮДА
+CREATOR_ID = 5413348003 
 
-# Список всех администраторов (изначально в нем только создатель)
+# Список всех администраторов (изначально в нем только ты)
 ADMINS = [CREATOR_ID]
 
 players = {}
@@ -89,7 +89,7 @@ def start(message):
     user_id = message.from_user.id
     name = message.from_user.first_name or f"User_{user_id}"
     get_player(user_id, name)
-    bot.send_message(message.chat.id, f"🔥 Бот запущен! Добавлена секретная текстовая команда на выдачу админки.", reply_markup=get_main_markup(user_id))
+    bot.send_message(message.chat.id, f"🔥 Права создателя привязаны! Теперь команда `/giveadmin` работает специально для тебя.", reply_markup=get_main_markup(user_id))
 
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callbacks(call):
@@ -250,8 +250,7 @@ def handle_text(message):
     name = message.from_user.first_name or "Игрок"
     user = get_player(user_id, name)
 
-    # 👑 СЕКРЕТНАЯ КОМАНДА ДЛЯ ВЛАДЕЛЬЦА БОТА
-    # Пример использования: /giveadmin 987654321
+    # 👑 СЕКРЕТНАЯ КОМАНДА ДЛЯ ТЕБЯ
     if message.text.startswith("/giveadmin"):
         if user_id != CREATOR_ID:
             bot.send_message(message.chat.id, "❌ У тебя нет прав разработчика для использования этой команды!")
