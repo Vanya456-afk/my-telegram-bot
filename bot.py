@@ -9,10 +9,10 @@ TOKEN = os.environ.get('BOT_TOKEN')
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
-# ⭐ ТВОЙ НАСТОЯЩИЙ TELEGRAM ID АВТОМАТИЧЕСКИ ПОДКЛЮЧЕН СЮДА
+# ⭐ ТВОЙ TELEGRAM ID — КЛЮЧ ОТ ВСЕЙ АДМИНКИ
 CREATOR_ID = 5413348003 
 
-# Список всех администраторов (изначально в нем только ты)
+# Список администраторов (ты в нем изначально и навсегда)
 ADMINS = [CREATOR_ID]
 
 players = {}
@@ -80,8 +80,11 @@ def get_main_markup(user_id):
     markup.add("🎫 Пасс", "🏆 Топ игроков")
     markup.add("👥 Друзья", "🎨 Настроить Косметику")
     markup.add("🎫 Промокоды", "⚙️ Настройки")
-    if user_id in ADMINS:
+    
+    # ПРЯМАЯ ПРОВЕРКА: Если зашел ты, кнопка управления админкой добавляется 100%
+    if user_id == CREATOR_ID or user_id in ADMINS:
         markup.add("👑 Админ-Панель")
+        
     markup.add("Назад")
     return markup
 
@@ -90,24 +93,37 @@ def start(message):
     user_id = message.from_user.id
     name = message.from_user.first_name or f"User_{user_id}"
     get_player(user_id, name)
-    bot.send_message(message.chat.id, f"🔥 Бот перезапущен на сервере Render! Скрытая команда `/giveadmin` готова к работе.", reply_markup=get_main_markup(user_id))
+    
+    # Нормальное, чистое приветствие без лишнего текста
+    welcome_text = (
+        f"👋 **Приветствуем в Vasanin Brawl, {name}!**\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"🌟 Стань лучшим игроком, открывай Starr Drops, прокачивай бравлеров и побеждай в сражениях!\n\n"
+        f"🎮 Используй меню ниже для управления аккаунтом."
+    )
+    
+    # Если заходит создатель, добавляем строчку-подтверждение в консоль бота
+    if user_id == CREATOR_ID:
+        welcome_text += "\n\n👑 **Статус Создателя подтвержден! Админ-панель разблокирована.**"
+        
+    bot.send_message(message.chat.id, welcome_text, reply_markup=get_main_markup(user_id), parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callbacks(call):
     user_id = call.from_user.id
     user = get_player(user_id)
     
-    if call.data == "admin_give_resources" and user_id in ADMINS:
+    if call.data == "admin_give_resources" and (user_id == CREATOR_ID or user_id in ADMINS):
         user['coins'] += 50000
         user['gems'] += 5000
         bot.answer_callback_query(call.id, "💰 Успешно начислено 50,000 монет и 5,000 гемов!", show_alert=True)
         
-    elif call.data == "admin_global_broadcast" and user_id in ADMINS:
+    elif call.data == "admin_global_broadcast" and (user_id == CREATOR_ID or user_id in ADMINS):
         bot.answer_callback_query(call.id)
         msg = bot.send_message(call.message.chat.id, "📢 Введи текст для рассылки всем игрокам:")
         bot.register_next_step_handler(msg, process_broadcast_text)
 
-    elif call.data == "admin_add_new_admin" and user_id in ADMINS:
+    elif call.data == "admin_add_new_admin" and (user_id == CREATOR_ID or user_id in ADMINS):
         bot.answer_callback_query(call.id)
         msg = bot.send_message(call.message.chat.id, "👤 Введи Telegram ID игрока, которому хочешь дать АДМИНКУ:")
         bot.register_next_step_handler(msg, process_add_admin)
@@ -251,9 +267,9 @@ def handle_text(message):
     name = message.from_user.first_name or "Игрок"
     user = get_player(user_id, name)
 
-    # 👑 СЕКРЕТНАЯ КОМАНДА ДЛЯ ТЕБЯ
+    # 👑 СЕКРЕТНАЯ КОМАНДА ДЛЯ ТЕБЯ И ТВОИХ АДМИНОВ
     if message.text.startswith("/giveadmin"):
-        if user_id != CREATOR_ID:
+        if user_id != CREATOR_ID and user_id not in ADMINS:
             bot.send_message(message.chat.id, "❌ У тебя нет прав разработчика для использования этой команды!")
             return
         
@@ -285,7 +301,8 @@ def handle_text(message):
             bot.send_message(message.chat.id, "🎉 **only2026 активирован!**", reply_markup=get_main_markup(user_id))
         return
 
-    if message.text == "👑 Админ-Панель" and user_id in ADMINS:
+    # Проверка на клик по админ-панели
+    if message.text == "👑 Админ-Панель" and (user_id == CREATOR_ID or user_id in ADMINS):
         inline_admin = telebot.types.InlineKeyboardMarkup(row_width=1)
         inline_admin.add(
             telebot.types.InlineKeyboardButton("💰 Начислить ресурсы (+50к голды, +5к гемов)", callback_data="admin_give_resources"),
@@ -381,7 +398,7 @@ def handle_text(message):
         bot.send_message(message.chat.id, "🏆 Таблица лидеров обновляется каждую неделю. Ты на правильном пути!")
 
     elif message.text == "⚙️ Настройки":
-        bot.send_message(message.chat.id, "⚙️ Настройки аккаунта: Язык: RU. Сервер: Replit Cloud 2026.")
+        bot.send_message(message.chat.id, "⚙️ Настройки аккаунта: Язык: RU. Сервер: Render Cloud.")
 
     elif message.text == "Назад":
         bot.send_message(message.chat.id, "В меню.", reply_markup=get_main_markup(user_id))
@@ -391,13 +408,10 @@ def home():
     return "Server OK"
 
 def run_bot():
-    # Перед стартом опроса принудительно удаляем старый вебхук/сессию (защита от 409 ошибок на Render)
     bot.remove_webhook()
     time.sleep(1)
     bot.infinity_polling(none_stop=True)
 
 if __name__ == "__main__":
-    # Запускаем бота в отдельном потоке
     threading.Thread(target=run_bot).start()
-    # Запускаем Flask-сервер (то, что требует Render)
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
